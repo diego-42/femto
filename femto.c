@@ -82,12 +82,7 @@ void editor_push_line(Editor *e, char *data, size_t size) {
 }
 
 
-void editor_insert_new_line(Editor *e, Cursor *c) {
-  if (c->y >= (int)e->l_size) {
-    editor_push_line(e, "", 0);
-    return;
-  }
-
+void editor_insert_new_line(Editor *e) {
   if (e->l_size >= e->l_cap) {
     e->l_cap = e->l_cap == 0 ? EDITOR_INIT_LINE_CAP : e->l_cap * 2;
 
@@ -98,24 +93,38 @@ void editor_insert_new_line(Editor *e, Cursor *c) {
     }
   }
 
-  memmove(&e->lines[c->y + 2], &e->lines[c->y + 1], (e->l_size - c->y) * sizeof(Line));
+  memmove(&e->lines[e->cursor.y + 2], &e->lines[e->cursor.y + 1], (e->l_size - e->cursor.y) * sizeof(Line));
 
-  Line *current_line = &e->lines[c->y];
+  Line *current_line = &e->lines[e->cursor.y];
 
-  size_t new_line_size = current_line->size - c->x;
+  size_t new_line_size = current_line->size - e->cursor.x;
 
   current_line->size -= new_line_size;
 
   char *new_line_data = malloc(new_line_size);
-  memcpy(new_line_data, &current_line->data[c->x], new_line_size);
+  memcpy(new_line_data, &current_line->data[e->cursor.x], new_line_size);
 
   Line new_line = {
     .data = new_line_data,
     .size = new_line_size
   };
 
-  e->lines[c->y + 1] = new_line;
+  e->lines[e->cursor.y + 1] = new_line;
   e->l_size++;
+}
+
+void editor_remove_line(Editor *e) {
+  Line *current_line = &e->lines[e->cursor.y];
+  Line *previous_line = &e->lines[e->cursor.y - 1];
+
+  previous_line->data = realloc(previous_line->data, previous_line->size + current_line->size);
+  memcpy(&previous_line->data[previous_line->size], current_line->data, current_line->size);
+  previous_line->size += current_line->size;
+
+
+  memmove(&e->lines[e->cursor.y], &e->lines[e->cursor.y + 1], (e->l_size - e->cursor.y) * sizeof(Line));
+
+  e->l_size--;
 }
 
 void editor_insert_char_line(Line *line, int cursor, char value) {
@@ -279,6 +288,16 @@ void editor_edit_mode(Editor *e) {
     if (e->cursor.x > 0) {
       editor_remove_char_line(&e->lines[e->cursor.y], e->cursor.x);
       e->cursor.x--;
+
+      return;
+    }
+
+    if (e->cursor.x == 0 && e->cursor.y > 0) {
+      int new_cursor_x = e->lines[e->cursor.y - 1].size;
+
+      editor_remove_line(e);
+      e->cursor.y--;
+      e->cursor.x = new_cursor_x;
     }
   } else if (strcmp(seq, "\x1b") == 0) {
     e->mode = MODE_NAVIGATION;
@@ -286,13 +305,13 @@ void editor_edit_mode(Editor *e) {
     char c = seq[0];
 
     if (c == '\n') {
-      editor_insert_new_line(e, &e->cursor);
+      editor_insert_new_line(e);
       e->cursor.y++;
       e->cursor.x = 0;
       return;
     }
 
-    if (e->cursor.y >= (int)e->l_size) editor_insert_new_line(e, &e->cursor);
+    if (e->cursor.y >= (int)e->l_size) editor_push_line(e, "", 0);
 
     editor_insert_char_line(&e->lines[e->cursor.y], e->cursor.x, c);
     e->cursor.x++;
