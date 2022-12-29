@@ -82,7 +82,12 @@ void editor_push_line(Editor *e, char *data, size_t size) {
 }
 
 
-void editor_insert_line(Editor *e, int cursor, char *data, size_t size) {
+void editor_insert_new_line(Editor *e, Cursor *c) {
+  if (c->y >= (int)e->l_size) {
+    editor_push_line(e, "", 0);
+    return;
+  }
+
   if (e->l_size >= e->l_cap) {
     e->l_cap = e->l_cap == 0 ? EDITOR_INIT_LINE_CAP : e->l_cap * 2;
 
@@ -93,21 +98,27 @@ void editor_insert_line(Editor *e, int cursor, char *data, size_t size) {
     }
   }
 
-  memmove(&e->lines[cursor + 1], &e->lines[cursor], (e->l_size - cursor) * sizeof(Line));
+  memmove(&e->lines[c->y + 2], &e->lines[c->y + 1], (e->l_size - c->y) * sizeof(Line));
 
-  char *copy_data = malloc(size);
-  memcpy(copy_data, data, size);
+  Line *current_line = &e->lines[c->y];
 
-  Line line = {
-    .data = copy_data,
-    .size = size
+  size_t new_line_size = current_line->size - c->x;
+
+  current_line->size -= new_line_size;
+
+  char *new_line_data = malloc(new_line_size);
+  memcpy(new_line_data, &current_line->data[c->x], new_line_size);
+
+  Line new_line = {
+    .data = new_line_data,
+    .size = new_line_size
   };
 
-  e->lines[cursor] = line;
+  e->lines[c->y + 1] = new_line;
   e->l_size++;
 }
 
-void editor_update_line(Line *line, int cursor, char value) {
+void editor_insert_char_line(Line *line, int cursor, char value) {
   line->data = realloc(line->data, line->size + 1);
 
   memmove(&line->data[cursor + 1], &line->data[cursor], line->size - cursor);
