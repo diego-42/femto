@@ -3,6 +3,7 @@
 #include <string.h>
 #include <errno.h>
 #include <termios.h>
+#include <unistd.h>
 
 #include <sys/ioctl.h>
 
@@ -211,28 +212,34 @@ void editor_save_file(Editor *e) {
 int editor_normal_mode(Editor *e) {
   int quit = 0;
 
-  char c = getchar();
+  char seq[32];
 
-  switch (c) {
-    case 'q': quit = 1; break;
-    case 'w':
-      if (e->cursor.y > 0) e->cursor.y--;
-      break;
-    case 's':
-      e->cursor.y++;
-      break;
-    case 'a':
-      if (e->cursor.x > 0) e->cursor.x--;
-      break;
-    case 'd':
-      e->cursor.x++;
-      break;
-    case 'e':
-      e->mode = MODE_EDIT;
-      break;
-    case 'f':
-      editor_save_file(e);
-      break;
+  int seq_len = read(fileno(stdin), seq, 32);
+
+  if (seq_len == 1) {
+    char c = seq[0];
+  
+    switch (c) {
+      case 'q': quit = 1; break;
+      case 'w':
+        if (e->cursor.y > 0) e->cursor.y--;
+        break;
+      case 's':
+        e->cursor.y++;
+        break;
+      case 'a':
+        if (e->cursor.x > 0) e->cursor.x--;
+        break;
+      case 'd':
+        e->cursor.x++;
+        break;
+      case 'e':
+        e->mode = MODE_EDIT;
+        break;
+      case 'f':
+        editor_save_file(e);
+        break;
+    }
   }
 
   if (e->cursor.y > (int)e->l_size) e->cursor.y = e->l_size;
@@ -246,17 +253,30 @@ int editor_normal_mode(Editor *e) {
 }
 
 void editor_edit_mode(Editor *e) {
-  char c = getchar();
+  char seq[32];
+  int seq_len = read(fileno(stdin), seq, 32);
+  (void)seq_len;
 
-  if (c == 27) e->mode = MODE_NORMAL;
-  else {
+  if (strcmp(seq, "\x7f") == 0) {
+    if (e->cursor.x > 0) {
+      editor_remove_char_line(&e->lines[e->cursor.y], e->cursor.x);
+      e->cursor.x--;
+    }
+  } else if (strcmp(seq, "\x1b") == 0) {
+    e->mode = MODE_NORMAL;
+  } else { 
+    char c = seq[0];
+
     if (c == '\n') {
-      editor_insert_line(e, ++e->cursor.y, "", 0);
+      editor_insert_new_line(e, &e->cursor);
+      e->cursor.y++;
       e->cursor.x = 0;
       return;
     }
 
-    editor_update_line(&e->lines[e->cursor.y], e->cursor.x, c);
+    if (e->cursor.y >= (int)e->l_size) editor_insert_new_line(e, &e->cursor);
+
+    editor_insert_char_line(&e->lines[e->cursor.y], e->cursor.x, c);
     e->cursor.x++;
   }
 }
