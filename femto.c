@@ -176,6 +176,7 @@ void editor_render_status_bar(Editor *e, int cols) {
   free(buffer);
 }
 
+//TODO: Update render method and add buffer to print the entire screen once
 void editor_render(Editor *e) {
   struct winsize w;
   ioctl(fileno(stdout), TIOCGWINSZ, &w);
@@ -238,22 +239,22 @@ int editor_normal_mode(Editor *e) {
   
     switch (c) {
       case 'q': quit = 1; break;
-      case 'w':
+      case 'f':
         if (e->cursor.y > 0) e->cursor.y--;
         break;
-      case 's':
+      case 'd':
         e->cursor.y++;
         break;
       case 'a':
         if (e->cursor.x > 0) e->cursor.x--;
         break;
-      case 'd':
+      case 's':
         e->cursor.x++;
         break;
       case 'e':
         e->mode = MODE_EDIT;
         break;
-      case 'f':
+      case 'r':
         editor_save_file(e);
         break;
     }
