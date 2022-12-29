@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 
 #define EDITOR_INIT_LINE_CAP 1024
 
@@ -148,11 +149,27 @@ void editor_remove_char_line(Editor *e) {
   line->size--;
 }
 
-void editor_initialize(Editor *e, char *input_path) {
-  FILE *f = fopen(input_path, "rb");
+void editor_initialize(Editor *e) {
+  struct stat buffer;
+  if (stat(e->file_path, &buffer) < 0) {
+    if (errno == ENOENT) {
+      editor_push_line(e, "", 0);
+      return;
+    } else {
+      fprintf(stderr, "[Error]: Could not determine if file exists\n");
+      exit(1);
+    }
+  }
+
+  if ((buffer.st_mode & S_IFMT) == S_IFREG) {
+    fprintf(stderr, "[Error]: Could not open the file '%s': is not a regular file\n", e->file_path);
+    exit(1);
+  }
+
+  FILE *f = fopen(e->file_path, "rb");
 
   if (f == NULL) {
-    fprintf(stderr, "[Error]: Could not open the file '%s': %s\n", input_path, strerror(errno));
+    fprintf(stderr, "[Error]: Could not open the file '%s': %s\n", e->file_path, strerror(errno));
     exit(1);
   }
   
@@ -186,7 +203,7 @@ void editor_render_status_bar(Editor *e, int cols) {
     buffer[cursor++] = ' ';
   }
 
-  printf(buffer);
+  fputs(buffer, stdout);
 
   free(buffer);
 }
@@ -214,8 +231,6 @@ void editor_render(Editor *e) {
 
       if (local_line_size > cols) local_line_size = cols;
       fwrite(line.data + local_offset_col, sizeof(*line.data), local_line_size, stdout);
-
-
     } else {
       fputc('+', stdout);
     }
@@ -408,7 +423,7 @@ int main(int argc, char **argv) {
   Editor *editor = editor_create();
   editor->file_path = input_path;
 
-  editor_initialize(editor, input_path);
+  editor_initialize(editor);
 
   struct termios term;
   tcgetattr(fileno(stdin), &term);
