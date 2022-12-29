@@ -203,17 +203,21 @@ void editor_render(Editor *e) {
   printf("\033[H");
 
   for (int i = 0; i < rows - 1; i++) {
-    if (i < (int)e->l_size) {
+    if (i + e->offset_row < (int)e->l_size) {
       Line line = e->lines[i + e->offset_row];
+      int local_offset_col = e->offset_col;
+      int local_line_size = line.size;
 
-      size_t line_size = line.size > (size_t)cols - 1 ? (size_t)cols - 1 : line.size;
-      if (e->offset_col > (int)line_size) line_size = 0;
+      if (local_offset_col > local_line_size) local_offset_col = local_line_size;
 
-      for (size_t j = 0; j < line_size; j++) {
-        putchar(line.data[j + e->offset_col]);
-      }
+      local_line_size -= local_offset_col;
+
+      if (local_line_size > cols) local_line_size = cols;
+      fwrite(line.data + local_offset_col, sizeof(*line.data), local_line_size, stdout);
+
+
     } else {
-      printf("+");
+      fputc('+', stdout);
     }
 
     printf("\033[1G\033[1B");
@@ -312,8 +316,14 @@ int editor_navigation_mode(Editor *e) {
 
   if (e->cursor.y < (int)e->l_size) {
     Line line = e->lines[e->cursor.y + e->offset_row];
-    if (e->cursor.x > (int)line.size) e->cursor.x = line.size;
-  } else e->cursor.x = 0;
+    while (e->cursor.x > (int)line.size) {
+      if (e->offset_col > 0) e->offset_col--;
+      else e->cursor.x--;
+    }
+  } else {
+    e->cursor.x = 0;
+    e->offset_col = 0;
+  }
 
   editor_check_scroll(e);
 
