@@ -219,7 +219,8 @@ void editor_save_file(Editor *e) {
   for (size_t i = 0; i < e->l_size; i++) {
     Line line = e->lines[i];
 
-    fprintf(f, "%*s\n", (int)line.size, line.data);
+    fwrite(line.data, sizeof(*line.data), line.size, f);
+    fputc('\n', f);
   }
 
   fclose(f);
