@@ -161,7 +161,7 @@ void editor_initialize(Editor *e) {
     }
   }
 
-  if ((buffer.st_mode & S_IFMT) == S_IFREG) {
+  if ((buffer.st_mode & S_IFMT) != S_IFREG) {
     fprintf(stderr, "[Error]: Could not open the file '%s': is not a regular file\n", e->file_path);
     exit(1);
   }
