@@ -43,6 +43,7 @@ typedef struct Editor {
   Cursor cursor;
 
   int offset_row;
+  int offset_col;
 } Editor;
 
 Editor *editor_create() {
@@ -98,12 +99,12 @@ void editor_insert_new_line(Editor *e) {
 
   Line *current_line = &e->lines[e->cursor.y + e->offset_row];
 
-  size_t new_line_size = current_line->size - e->cursor.x;
+  size_t new_line_size = current_line->size - (e->cursor.x + e->offset_col);
 
   current_line->size -= new_line_size;
 
   char *new_line_data = malloc(new_line_size);
-  memcpy(new_line_data, &current_line->data[e->cursor.x], new_line_size);
+  memcpy(new_line_data, &current_line->data[e->cursor.x + e->offset_col], new_line_size);
 
   Line new_line = {
     .data = new_line_data,
@@ -133,16 +134,16 @@ void editor_insert_char_line(Editor *e, char value) {
 
   line->data = realloc(line->data, line->size + 1);
 
-  memmove(&line->data[e->cursor.x + 1], &line->data[e->cursor.x], line->size - e->cursor.x);
+  memmove(&line->data[e->cursor.x + e->offset_col + 1], &line->data[e->cursor.x + e->offset_col], line->size - (e->cursor.x + e->offset_col));
 
-  line->data[e->cursor.x] = value;
+  line->data[e->cursor.x + e->offset_col] = value;
   line->size++;
 }
 
 void editor_remove_char_line(Editor *e) {
   Line *line = &e->lines[e->cursor.y + e->offset_row];
 
-  memmove(&line->data[e->cursor.x - 1], &line->data[e->cursor.x], line->size - e->cursor.x);
+  memmove(&line->data[e->cursor.x + e->offset_col - 1], &line->data[e->cursor.x + e->offset_col], line->size - (e->cursor.x + e->offset_col));
 
   line->size--;
 }
@@ -173,7 +174,7 @@ void editor_render_status_bar(Editor *e, int cols) {
   int cursor = 0;
 
   cursor += sprintf(buffer + cursor, "[[ %s ]] ", mode_to_str(e->mode));
-  cursor += sprintf(buffer + cursor, "%d:%d ", e->cursor.y + 1 + e->offset_row, e->cursor.x + 1);
+  cursor += sprintf(buffer + cursor, "%d:%d ", e->cursor.y + 1 + e->offset_row, e->cursor.x + e->offset_col + 1);
 
   if (cursor + strlen(e->file_path) < (size_t)cols) {
     cursor += sprintf(buffer + cursor, e->file_path);
@@ -205,10 +206,11 @@ void editor_render(Editor *e) {
     if (i < (int)e->l_size) {
       Line line = e->lines[i + e->offset_row];
 
-      size_t line_size = line.size > (size_t)cols ? (size_t)cols : line.size;
+      size_t line_size = line.size > (size_t)cols - 1 ? (size_t)cols - 1 : line.size;
+      if (e->offset_col > (int)line_size) line_size = 0;
 
       for (size_t j = 0; j < line_size; j++) {
-        putchar(line.data[j]);
+        putchar(line.data[j + e->offset_col]);
       }
     } else {
       printf("+");
@@ -241,6 +243,38 @@ void editor_save_file(Editor *e) {
   fclose(f);
 }
 
+void editor_check_scroll(Editor *e) {
+  struct winsize w;
+  ioctl(fileno(stdout), TIOCGWINSZ, &w);
+
+  while (e->cursor.y < 0) {
+    e->cursor.y++;
+    
+    if (e->offset_row > 0) e->offset_row--;
+  }
+
+  while (e->cursor.y >= w.ws_row - 1) {
+    e->cursor.y--;
+
+    if (e->offset_row < (int)(e->l_size - w.ws_row + 1)) e->offset_row++;
+  }
+
+
+  while (e->cursor.x < 0) {
+    e->cursor.x++;
+
+    if (e->offset_col > 0) e->offset_col--;
+  }
+
+  Line line = e->lines[e->cursor.y + e->offset_row];
+
+  while (e->cursor.x >= w.ws_col) {
+    e->cursor.x--;
+
+    if (e->offset_col < (int)(line.size - w.ws_col + 1)) e->offset_col++;
+  }
+
+}
 int editor_navigation_mode(Editor *e) {
   int quit = 0;
 
@@ -274,24 +308,14 @@ int editor_navigation_mode(Editor *e) {
     }
   }
 
-  while (e->cursor.y < 0) {
-    e->cursor.y++;
-    
-    if (e->offset_row > 0) e->offset_row--;
-  }
-
-  struct winsize w;
-  ioctl(fileno(stdout), TIOCGWINSZ, &w);
-  while (e->cursor.y >= w.ws_row - 1) {
-    e->cursor.y--;
-
-    if (e->offset_row < (int)(e->l_size - w.ws_row + 1)) e->offset_row++;
-  }
+  if (e->cursor.y > (int)e->l_size) e->cursor.y = e->l_size;
 
   if (e->cursor.y < (int)e->l_size) {
     Line line = e->lines[e->cursor.y + e->offset_row];
     if (e->cursor.x > (int)line.size) e->cursor.x = line.size;
   } else e->cursor.x = 0;
+
+  editor_check_scroll(e);
 
   return quit;
 }
@@ -304,7 +328,9 @@ void editor_edit_mode(Editor *e) {
   if (strcmp(seq, "\x7f") == 0) {
     if (e->cursor.x > 0) {
       editor_remove_char_line(e);
-      e->cursor.x--;
+
+      if (e->offset_col > 0) e->offset_col--;
+      else e->cursor.x--;
     } else {
       if (e->cursor.y > 0 || e->offset_row > 0) {
         int new_cursor_x = e->lines[e->cursor.y + e->offset_row - 1].size;
@@ -323,6 +349,7 @@ void editor_edit_mode(Editor *e) {
       editor_insert_new_line(e);
       e->cursor.y++;
       e->cursor.x = 0;
+      e->offset_col = 0;
     } else {
       if (e->cursor.y + e->offset_row >= (int)e->l_size) editor_push_line(e, "", 0);
 
@@ -331,19 +358,7 @@ void editor_edit_mode(Editor *e) {
     }
   }
 
-  while (e->cursor.y < 0) {
-    e->cursor.y++;
-    
-    if (e->offset_row > 0) e->offset_row--;
-  }
-
-  struct winsize w;
-  ioctl(fileno(stdout), TIOCGWINSZ, &w);
-  while (e->cursor.y >= w.ws_row - 1) {
-    e->cursor.y--;
-
-    if (e->offset_row < (int)(e->l_size - w.ws_row + 1)) e->offset_row++;
-  }
+  editor_check_scroll(e);
 }
 
 void editor_run(Editor *e) {
