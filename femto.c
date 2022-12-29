@@ -40,8 +40,9 @@ typedef struct Editor {
   size_t l_cap;
 
   Mode mode;
-
   Cursor cursor;
+
+  int offset_row;
 } Editor;
 
 Editor *editor_create() {
@@ -93,9 +94,9 @@ void editor_insert_new_line(Editor *e) {
     }
   }
 
-  memmove(&e->lines[e->cursor.y + 2], &e->lines[e->cursor.y + 1], (e->l_size - e->cursor.y) * sizeof(Line));
+  memmove(&e->lines[e->cursor.y + e->offset_row + 2], &e->lines[e->cursor.y + e->offset_row + 1], (e->l_size - (e->cursor.y + e->offset_row)) * sizeof(Line));
 
-  Line *current_line = &e->lines[e->cursor.y];
+  Line *current_line = &e->lines[e->cursor.y + e->offset_row];
 
   size_t new_line_size = current_line->size - e->cursor.x;
 
@@ -109,35 +110,39 @@ void editor_insert_new_line(Editor *e) {
     .size = new_line_size
   };
 
-  e->lines[e->cursor.y + 1] = new_line;
+  e->lines[e->cursor.y + e->offset_row + 1] = new_line;
   e->l_size++;
 }
 
 void editor_remove_line(Editor *e) {
-  Line *current_line = &e->lines[e->cursor.y];
-  Line *previous_line = &e->lines[e->cursor.y - 1];
+  Line *current_line = &e->lines[e->cursor.y + e->offset_row];
+  Line *previous_line = &e->lines[e->cursor.y + e->offset_row - 1];
 
   previous_line->data = realloc(previous_line->data, previous_line->size + current_line->size);
   memcpy(&previous_line->data[previous_line->size], current_line->data, current_line->size);
   previous_line->size += current_line->size;
 
 
-  memmove(&e->lines[e->cursor.y], &e->lines[e->cursor.y + 1], (e->l_size - e->cursor.y) * sizeof(Line));
+  memmove(&e->lines[e->cursor.y + e->offset_row], &e->lines[e->cursor.y + e->offset_row + 1], (e->l_size - (e->cursor.y + e->offset_row)) * sizeof(Line));
 
   e->l_size--;
 }
 
-void editor_insert_char_line(Line *line, int cursor, char value) {
+void editor_insert_char_line(Editor *e, char value) {
+  Line *line = &e->lines[e->cursor.y + e->offset_row];
+
   line->data = realloc(line->data, line->size + 1);
 
-  memmove(&line->data[cursor + 1], &line->data[cursor], line->size - cursor);
+  memmove(&line->data[e->cursor.x + 1], &line->data[e->cursor.x], line->size - e->cursor.x);
 
-  line->data[cursor] = value;
+  line->data[e->cursor.x] = value;
   line->size++;
 }
 
-void editor_remove_char_line(Line *line, int cursor) {
-  memmove(&line->data[cursor - 1], &line->data[cursor], line->size - cursor);
+void editor_remove_char_line(Editor *e) {
+  Line *line = &e->lines[e->cursor.y + e->offset_row];
+
+  memmove(&line->data[e->cursor.x - 1], &line->data[e->cursor.x], line->size - e->cursor.x);
 
   line->size--;
 }
@@ -168,7 +173,7 @@ void editor_render_status_bar(Editor *e, int cols) {
   int cursor = 0;
 
   cursor += sprintf(buffer + cursor, "[[ %s ]] ", mode_to_str(e->mode));
-  cursor += sprintf(buffer + cursor, "%d:%d ", e->cursor.y + 1, e->cursor.x + 1);
+  cursor += sprintf(buffer + cursor, "%d:%d ", e->cursor.y + 1 + e->offset_row, e->cursor.x + 1);
 
   if (cursor + strlen(e->file_path) < (size_t)cols) {
     cursor += sprintf(buffer + cursor, e->file_path);
@@ -198,7 +203,7 @@ void editor_render(Editor *e) {
 
   for (int i = 0; i < rows - 1; i++) {
     if (i < (int)e->l_size) {
-      Line line = e->lines[i];
+      Line line = e->lines[i + e->offset_row];
 
       size_t line_size = line.size > (size_t)cols ? (size_t)cols : line.size;
 
@@ -249,13 +254,13 @@ int editor_navigation_mode(Editor *e) {
     switch (c) {
       case 'q': quit = 1; break;
       case 'd':
-        if (e->cursor.y > 0) e->cursor.y--;
+        e->cursor.y--;
         break;
       case 'f':
         e->cursor.y++;
         break;
       case 'a':
-        if (e->cursor.x > 0) e->cursor.x--;
+        e->cursor.x--;
         break;
       case 's':
         e->cursor.x++;
@@ -269,10 +274,22 @@ int editor_navigation_mode(Editor *e) {
     }
   }
 
-  if (e->cursor.y > (int)e->l_size) e->cursor.y = e->l_size;
+  while (e->cursor.y < 0) {
+    e->cursor.y++;
+    
+    if (e->offset_row > 0) e->offset_row--;
+  }
+
+  struct winsize w;
+  ioctl(fileno(stdout), TIOCGWINSZ, &w);
+  while (e->cursor.y >= w.ws_row - 1) {
+    e->cursor.y--;
+
+    if (e->offset_row < (int)(e->l_size - w.ws_row + 1)) e->offset_row++;
+  }
 
   if (e->cursor.y < (int)e->l_size) {
-    Line line = e->lines[e->cursor.y];
+    Line line = e->lines[e->cursor.y + e->offset_row];
     if (e->cursor.x > (int)line.size) e->cursor.x = line.size;
   } else e->cursor.x = 0;
 
@@ -286,18 +303,16 @@ void editor_edit_mode(Editor *e) {
 
   if (strcmp(seq, "\x7f") == 0) {
     if (e->cursor.x > 0) {
-      editor_remove_char_line(&e->lines[e->cursor.y], e->cursor.x);
+      editor_remove_char_line(e);
       e->cursor.x--;
+    } else {
+      if (e->cursor.y > 0 || e->offset_row > 0) {
+        int new_cursor_x = e->lines[e->cursor.y + e->offset_row - 1].size;
 
-      return;
-    }
-
-    if (e->cursor.x == 0 && e->cursor.y > 0) {
-      int new_cursor_x = e->lines[e->cursor.y - 1].size;
-
-      editor_remove_line(e);
-      e->cursor.y--;
-      e->cursor.x = new_cursor_x;
+        editor_remove_line(e);
+        e->cursor.y--;
+        e->cursor.x = new_cursor_x;
+      }
     }
   } else if (strcmp(seq, "\x1b") == 0) {
     e->mode = MODE_NAVIGATION;
@@ -308,13 +323,26 @@ void editor_edit_mode(Editor *e) {
       editor_insert_new_line(e);
       e->cursor.y++;
       e->cursor.x = 0;
-      return;
+    } else {
+      if (e->cursor.y + e->offset_row >= (int)e->l_size) editor_push_line(e, "", 0);
+
+      editor_insert_char_line(e, c);
+      e->cursor.x++;
     }
+  }
 
-    if (e->cursor.y >= (int)e->l_size) editor_push_line(e, "", 0);
+  while (e->cursor.y < 0) {
+    e->cursor.y++;
+    
+    if (e->offset_row > 0) e->offset_row--;
+  }
 
-    editor_insert_char_line(&e->lines[e->cursor.y], e->cursor.x, c);
-    e->cursor.x++;
+  struct winsize w;
+  ioctl(fileno(stdout), TIOCGWINSZ, &w);
+  while (e->cursor.y >= w.ws_row - 1) {
+    e->cursor.y--;
+
+    if (e->offset_row < (int)(e->l_size - w.ws_row + 1)) e->offset_row++;
   }
 }
 
@@ -335,7 +363,7 @@ void editor_run(Editor *e) {
     }
   }
 
-  printf("\033[2J");
+  printf("\033[2J\033[H");
 }
 
 void usage(FILE *fd, char *program) {
