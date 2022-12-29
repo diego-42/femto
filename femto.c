@@ -15,13 +15,13 @@ typedef struct Line {
 } Line;
 
 typedef enum Mode {
-  MODE_NORMAL = 0,
+  MODE_NAVIGATION = 0,
   MODE_EDIT,
 } Mode;
 
 char *mode_to_str(Mode mode) {
   switch (mode) {
-    case MODE_NORMAL: return "normal";
+    case MODE_NAVIGATION: return "navigation";
     case MODE_EDIT:   return "edit";
     default:          return "unknown";
   }
@@ -227,7 +227,7 @@ void editor_save_file(Editor *e) {
   fclose(f);
 }
 
-int editor_normal_mode(Editor *e) {
+int editor_navigation_mode(Editor *e) {
   int quit = 0;
 
   char seq[32];
@@ -239,10 +239,10 @@ int editor_normal_mode(Editor *e) {
   
     switch (c) {
       case 'q': quit = 1; break;
-      case 'f':
+      case 'd':
         if (e->cursor.y > 0) e->cursor.y--;
         break;
-      case 'd':
+      case 'f':
         e->cursor.y++;
         break;
       case 'a':
@@ -281,7 +281,7 @@ void editor_edit_mode(Editor *e) {
       e->cursor.x--;
     }
   } else if (strcmp(seq, "\x1b") == 0) {
-    e->mode = MODE_NORMAL;
+    e->mode = MODE_NAVIGATION;
   } else { 
     char c = seq[0];
 
@@ -307,8 +307,8 @@ void editor_run(Editor *e) {
     editor_render(e);
 
     switch (e->mode) {
-      case MODE_NORMAL:
-        quit = editor_normal_mode(e);
+      case MODE_NAVIGATION:
+        quit = editor_navigation_mode(e);
         break;
       case MODE_EDIT:
         editor_edit_mode(e);
