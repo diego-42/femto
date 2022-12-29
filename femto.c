@@ -195,13 +195,10 @@ void editor_render(Editor *e) {
       for (size_t j = 0; j < line_size; j++) {
         putchar(line.data[j]);
       }
-
-      printf("\n");
-
-      continue;
+    } else {
+      printf("+");
     }
 
-    printf("+");
     printf("\033[1G\033[1B");
   }
 
@@ -212,6 +209,8 @@ void editor_render(Editor *e) {
   printf("\033[27m");
 
   printf("\033[%d;%dH", e->cursor.y + 1, e->cursor.x + 1);
+
+  fflush(stdout);
 }
 
 void editor_save_file(Editor *e) {
