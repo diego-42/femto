@@ -127,6 +127,12 @@ void editor_insert_char_line(Line *line, int cursor, char value) {
   line->size++;
 }
 
+void editor_remove_char_line(Line *line, int cursor) {
+  memmove(&line->data[cursor - 1], &line->data[cursor], line->size - cursor);
+
+  line->size--;
+}
+
 void editor_initialize(Editor *e, char *input_path) {
   FILE *f = fopen(input_path, "rb");
 
