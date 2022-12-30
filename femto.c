@@ -330,6 +330,9 @@ int editor_navigation_mode(Editor *e) {
           }
         }
         break;
+      case 'J':
+        e->cursor.y = e->l_size;
+        break;
       case 'k':
         if (e->cursor.y + e->offset_row > 0) {
           Line line = e->lines[--e->cursor.y + e->offset_row];
@@ -338,6 +341,10 @@ int editor_navigation_mode(Editor *e) {
             line = e->lines[--e->cursor.y + e->offset_row];
           }
         }
+        break;
+      case 'K':
+        e->cursor.y = 0;
+        e->offset_row = 0;
         break;
       case 'r':
         editor_save_file(e);
