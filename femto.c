@@ -275,7 +275,7 @@ void editor_check_scroll(Editor *e) {
   while (e->cursor.y >= w.ws_row - 1) {
     e->cursor.y--;
 
-    if (e->offset_row < (int)(e->l_size - w.ws_row + 1)) e->offset_row++;
+    if (e->offset_row < (int)(e->l_size - w.ws_row + 2)) e->offset_row++;
   }
 
 
@@ -327,18 +327,26 @@ int editor_navigation_mode(Editor *e) {
     }
   }
 
-  if (e->cursor.y > (int)e->l_size) e->cursor.y = e->l_size;
 
   if (e->cursor.y < (int)e->l_size) {
     Line line = e->lines[e->cursor.y + e->offset_row];
-    while (e->cursor.x > (int)line.size) {
-      if (e->offset_col > 0) e->offset_col--;
-      else e->cursor.x--;
+
+    if (e->cursor.x > (int)line.size) {
+      e->cursor.x = 0;
+      e->cursor.y++;
+      e->offset_col = 0;
+    } else if (e->cursor.x < 0 && e->cursor.y > 0) {
+      Line prev_line = e->lines[e->cursor.y + e->offset_row - 1];
+
+      e->cursor.x = prev_line.size;
+      e->cursor.y--;
     }
   } else {
     e->cursor.x = 0;
     e->offset_col = 0;
   }
+
+  if (e->cursor.y > (int)e->l_size) e->cursor.y = e->l_size;
 
   editor_check_scroll(e);
 
