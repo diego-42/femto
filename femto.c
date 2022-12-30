@@ -321,6 +321,24 @@ int editor_navigation_mode(Editor *e) {
       case 'e':
         e->mode = MODE_EDIT;
         break;
+      case 'j':
+        if (e->cursor.y + e->offset_row < (int)e->l_size) {
+          Line line = e->lines[++e->cursor.y + e->offset_row];
+
+          while (line.size > 0 && e->cursor.y + e->offset_row < (int)e->l_size) {
+            line = e->lines[++e->cursor.y + e->offset_row];
+          }
+        }
+        break;
+      case 'k':
+        if (e->cursor.y + e->offset_row > 0) {
+          Line line = e->lines[--e->cursor.y + e->offset_row];
+
+          while (line.size > 0 && e->cursor.y + e->offset_row > 0) {
+            line = e->lines[--e->cursor.y + e->offset_row];
+          }
+        }
+        break;
       case 'r':
         editor_save_file(e);
         break;
