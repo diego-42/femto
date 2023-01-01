@@ -384,6 +384,8 @@ void editor_edit_mode(Editor *e) {
   (void)seq_len;
 
   if (strcmp(seq, "\x7f") == 0) {
+    if (e->cursor.y + e->offset_row >= (int)e->l_size) editor_push_line(e, "", 0);
+
     if (e->cursor.x > 0) {
       editor_remove_char_line(e);
 
@@ -411,7 +413,7 @@ void editor_edit_mode(Editor *e) {
     } else {
       if (e->cursor.y + e->offset_row >= (int)e->l_size) editor_push_line(e, "", 0);
 
-      editor_insert_char_line(e, c);
+      if (' ' <= c && c <= '~') editor_insert_char_line(e, c);
       e->cursor.x++;
     }
   }
