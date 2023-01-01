@@ -194,7 +194,7 @@ void editor_render_status_bar(Editor *e, int cols) {
   cursor += sprintf(buffer + cursor, "%d:%d ", e->cursor.y + 1 + e->offset_row, e->cursor.x + e->offset_col + 1);
 
   if (cursor + strlen(e->file_path) < (size_t)cols) {
-    cursor += sprintf(buffer + cursor, e->file_path);
+    cursor += sprintf(buffer + cursor, "%s", e->file_path);
   } else {
     cursor += sprintf(buffer + cursor, "%.*s...", (cols - cursor) - 3, e->file_path);
   }
@@ -318,7 +318,7 @@ int editor_navigation_mode(Editor *e) {
       case 's':
         e->cursor.x++;
         break;
-      case 'e':
+      case ' ':
         e->mode = MODE_EDIT;
         break;
       case 'j':
